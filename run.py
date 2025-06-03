@@ -17,7 +17,8 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     
     # Get host from environment variable or default to localhost
-    host = os.environ.get('HOST', '127.0.0.1')
+    # For production, use 0.0.0.0 to bind to all interfaces
+    host = os.environ.get('HOST', '0.0.0.0' if os.environ.get('FLASK_CONFIG') == 'production' else '127.0.0.1')
     
     # Get debug mode from environment variable or default to True for development
     debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
