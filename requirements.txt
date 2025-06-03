@@ -4,4 +4,5 @@ Flask-Login
 Flask-PyMongo
 pymongo
 python-dotenv
+python-dateutil
 gunicorn

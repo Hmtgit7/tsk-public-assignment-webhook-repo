@@ -1,8 +1,9 @@
 # app/models/webhook_event.py
-from datetime import datetime
+from datetime import datetime, timezone
 from app.extensions import get_collection
 from bson import ObjectId
 import logging
+import dateutil.parser
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ class WebhookEvent:
         self.repository_url = repository_url
         self.commit_message = commit_message
         self.pull_request_title = pull_request_title
-        self.timestamp = timestamp or datetime.utcnow()
+        # Always use current UTC time for consistency
+        self.timestamp = timestamp or datetime.now(timezone.utc)
     
     def to_dict(self):
         """Convert to dictionary for MongoDB storage"""
@@ -62,7 +64,7 @@ class WebhookEvent:
     
     @staticmethod
     def format_message(event):
-        """Format event message for display with enhanced details"""
+        """Format event message for display with proper timezone"""
         try:
             author = event['author']
             action = event['action']
@@ -73,11 +75,21 @@ class WebhookEvent:
             commit_message = event.get('commit_message')
             pull_request_title = event.get('pull_request_title')
             
-            # Format timestamp
+            # Format timestamp - ensure it's timezone aware
             if isinstance(timestamp, datetime):
+                # If timestamp is naive, assume it's UTC
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
                 formatted_time = timestamp.strftime("%d %B %Y - %I:%M %p UTC")
             else:
-                formatted_time = str(timestamp)
+                # Try to parse string timestamp
+                try:
+                    parsed_time = dateutil.parser.parse(timestamp)
+                    if parsed_time.tzinfo is None:
+                        parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+                    formatted_time = parsed_time.strftime("%d %B %Y - %I:%M %p UTC")
+                except:
+                    formatted_time = str(timestamp)
             
             # Format message based on action type with enhanced details
             if action == 'PUSH':
@@ -106,12 +118,25 @@ class WebhookEvent:
     
     @staticmethod
     def from_github_push(payload):
-        """Create WebhookEvent from GitHub push payload with enhanced data extraction"""
+        """Create WebhookEvent from GitHub push payload with proper timestamp"""
         try:
             # Extract commit message from the latest commit
             commit_message = None
+            commit_timestamp = None
             if payload.get('commits') and len(payload['commits']) > 0:
-                commit_message = payload['commits'][0].get('message', '')[:100]  # Limit to 100 chars
+                latest_commit = payload['commits'][0]
+                commit_message = latest_commit.get('message', '')[:100]  # Limit to 100 chars
+                # Use the actual commit timestamp from GitHub
+                commit_timestamp_str = latest_commit.get('timestamp')
+                if commit_timestamp_str:
+                    try:
+                        commit_timestamp = dateutil.parser.parse(commit_timestamp_str)
+                        # Ensure timezone awareness
+                        if commit_timestamp.tzinfo is None:
+                            commit_timestamp = commit_timestamp.replace(tzinfo=timezone.utc)
+                    except:
+                        logger.warning(f"Could not parse commit timestamp: {commit_timestamp_str}")
+                        commit_timestamp = datetime.now(timezone.utc)
             
             # Extract repository information
             repository = payload.get('repository', {})
@@ -130,7 +155,7 @@ class WebhookEvent:
                 repository_name=repository_name,
                 repository_url=repository_url,
                 commit_message=commit_message,
-                timestamp=datetime.utcnow()
+                timestamp=commit_timestamp or datetime.now(timezone.utc)  # Use commit time or current time
             )
         except KeyError as e:
             logger.error(f"Missing key in push payload: {str(e)}")
@@ -138,10 +163,22 @@ class WebhookEvent:
     
     @staticmethod
     def from_github_pull_request(payload):
-        """Create WebhookEvent from GitHub pull request payload with enhanced data"""
+        """Create WebhookEvent from GitHub pull request payload with proper timestamp"""
         try:
             pr = payload['pull_request']
             repository = payload.get('repository', {})
+            
+            # Use PR creation timestamp
+            pr_timestamp = None
+            created_at = pr.get('created_at')
+            if created_at:
+                try:
+                    pr_timestamp = dateutil.parser.parse(created_at)
+                    if pr_timestamp.tzinfo is None:
+                        pr_timestamp = pr_timestamp.replace(tzinfo=timezone.utc)
+                except:
+                    logger.warning(f"Could not parse PR timestamp: {created_at}")
+                    pr_timestamp = datetime.now(timezone.utc)
             
             return WebhookEvent(
                 request_id=str(pr['id']),
@@ -152,7 +189,7 @@ class WebhookEvent:
                 repository_name=repository.get('name', 'Unknown'),
                 repository_url=repository.get('html_url', ''),
                 pull_request_title=pr.get('title', '')[:100],  # Limit to 100 chars
-                timestamp=datetime.utcnow()
+                timestamp=pr_timestamp or datetime.now(timezone.utc)
             )
         except KeyError as e:
             logger.error(f"Missing key in pull request payload: {str(e)}")
@@ -160,10 +197,22 @@ class WebhookEvent:
     
     @staticmethod
     def from_github_merge(payload):
-        """Create WebhookEvent from GitHub merge payload with enhanced data"""
+        """Create WebhookEvent from GitHub merge payload with proper timestamp"""
         try:
             pr = payload['pull_request']
             repository = payload.get('repository', {})
+            
+            # Use merge timestamp
+            merge_timestamp = None
+            merged_at = pr.get('merged_at')
+            if merged_at:
+                try:
+                    merge_timestamp = dateutil.parser.parse(merged_at)
+                    if merge_timestamp.tzinfo is None:
+                        merge_timestamp = merge_timestamp.replace(tzinfo=timezone.utc)
+                except:
+                    logger.warning(f"Could not parse merge timestamp: {merged_at}")
+                    merge_timestamp = datetime.now(timezone.utc)
             
             return WebhookEvent(
                 request_id=str(pr['id']),
@@ -174,7 +223,7 @@ class WebhookEvent:
                 repository_name=repository.get('name', 'Unknown'),
                 repository_url=repository.get('html_url', ''),
                 pull_request_title=pr.get('title', '')[:100],
-                timestamp=datetime.utcnow()
+                timestamp=merge_timestamp or datetime.now(timezone.utc)
             )
         except KeyError as e:
             logger.error(f"Missing key in merge payload: {str(e)}")

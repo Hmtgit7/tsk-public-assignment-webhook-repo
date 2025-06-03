@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial fetch
     fetchEvents();
     
-    // Start polling every 10 seconds for more responsiveness
+    // Start polling every 5 seconds for real-time updates
     startPolling();
     
     // Add refresh button click handler
@@ -35,6 +35,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add test event buttons
     addTestEventButtons();
+    
+    // Update timestamps every minute
+    setInterval(updateAllTimestamps, 60000);
 });
 
 function setWebhookUrl() {
@@ -54,6 +57,7 @@ function addTestEventButtons() {
             <button onclick="createTestEvent('push')" class="test-btn">Test Push</button>
             <button onclick="createTestEvent('pull_request')" class="test-btn">Test PR</button>
             <button onclick="createTestEvent('merge')" class="test-btn">Test Merge</button>
+            <button onclick="debugWebhook()" class="test-btn debug-btn">Debug</button>
         </div>
     `;
     
@@ -76,6 +80,12 @@ function addTestEventButtons() {
             .test-btn:hover {
                 transform: translateY(-1px);
                 box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+            }
+            .debug-btn {
+                background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+            }
+            .debug-btn:hover {
+                box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
             }
             @media (max-width: 768px) {
                 .test-buttons {
@@ -121,9 +131,9 @@ function startPolling() {
         clearInterval(pollInterval);
     }
     
-    // Start new polling interval (10 seconds for better responsiveness)
-    pollInterval = setInterval(fetchEvents, 10000);
-    console.log('Started polling every 10 seconds');
+    // Start new polling interval (5 seconds for real-time feel)
+    pollInterval = setInterval(fetchEvents, 5000);
+    console.log('Started polling every 5 seconds');
 }
 
 async function fetchEvents() {
@@ -150,6 +160,8 @@ async function fetchEvents() {
                 lastEventId = data.events[0].id;
                 if (lastEventCount > 0) { // Don't show notification on first load
                     showSuccessMessage('New event received!');
+                    // Play a subtle notification sound if available
+                    playNotificationSound();
                 }
             }
             
@@ -165,6 +177,29 @@ async function fetchEvents() {
         isLoading = false;
         updateLoadingState(false);
         updateLastUpdateTime();
+    }
+}
+
+function playNotificationSound() {
+    // Create a subtle notification sound
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (error) {
+        // Ignore audio errors - not all browsers support Web Audio API
     }
 }
 
@@ -212,6 +247,7 @@ function createEventElement(event, isNew = false) {
     const eventItem = document.createElement('div');
     eventItem.className = `event-item ${isNew ? 'new' : ''}`;
     eventItem.setAttribute('data-event-id', event.id);
+    eventItem.setAttribute('data-timestamp', event.timestamp);
     
     const actionType = event.action.toLowerCase().replace('_', '-');
     const iconClass = getIconClass(event.action);
@@ -227,9 +263,9 @@ function createEventElement(event, isNew = false) {
         <div class="event-content">
             <div class="event-message">${escapeHtml(event.message)}</div>
             <div class="event-meta">
-                <span class="event-time">
+                <span class="event-time" data-timestamp="${event.timestamp}">
                     <i class="fas fa-clock"></i>
-                    ${formatTimestamp(event.timestamp)}
+                    <span class="time-text">${formatTimestamp(event.timestamp)}</span>
                 </span>
                 ${eventDetails.repository ? `
                     <span class="event-repo">
@@ -249,6 +285,18 @@ function createEventElement(event, isNew = false) {
     `;
     
     return eventItem;
+}
+
+function updateAllTimestamps() {
+    // Update all timestamp elements to show current relative time
+    const timeElements = document.querySelectorAll('.event-time[data-timestamp]');
+    timeElements.forEach(timeEl => {
+        const timestamp = timeEl.getAttribute('data-timestamp');
+        const timeTextEl = timeEl.querySelector('.time-text');
+        if (timeTextEl) {
+            timeTextEl.textContent = formatTimestamp(timestamp);
+        }
+    });
 }
 
 function parseEventMessage(message) {
@@ -298,6 +346,7 @@ function formatTimestamp(timestamp) {
         const diffHours = Math.floor(diffMins / 60);
         const diffDays = Math.floor(diffHours / 24);
         
+        // Show exact time if less than 1 minute
         if (diffMins < 1) {
             return 'Just now';
         } else if (diffMins < 60) {
@@ -307,12 +356,14 @@ function formatTimestamp(timestamp) {
         } else if (diffDays < 7) {
             return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
         } else {
+            // For older events, show full date and time
             return date.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'short',
                 day: 'numeric',
                 hour: '2-digit',
-                minute: '2-digit'
+                minute: '2-digit',
+                timeZoneName: 'short'
             });
         }
     } catch (error) {
@@ -347,6 +398,50 @@ function updateLastUpdateTime() {
         minute: '2-digit',
         second: '2-digit'
     });
+}
+
+async function debugWebhook() {
+    try {
+        console.log('🔍 Running webhook debug...');
+        
+        // Test webhook status
+        const statusResponse = await fetch('/webhook/status');
+        const statusData = await statusResponse.json();
+        
+        console.log('📊 Webhook Status:', statusData);
+        
+        // Test debug endpoint
+        const debugResponse = await fetch('/webhook/debug');
+        const debugData = await debugResponse.json();
+        
+        console.log('🐛 Debug Data:', debugData);
+        
+        if (debugData.success && debugData.events.length > 0) {
+            console.log('✅ Webhook is receiving events');
+            console.log(`📈 Total events: ${debugData.count}`);
+            console.log(`👥 Unique authors: ${debugData.debug_info.unique_authors.join(', ')}`);
+            console.log(`🎯 Event types: ${debugData.debug_info.event_types.join(', ')}`);
+            showSuccessMessage(`Webhook working! ${debugData.count} events found.`);
+        } else {
+            console.log('⚠️ No recent webhook events found');
+            showErrorMessage('No recent webhook events. Check GitHub webhook configuration.');
+        }
+        
+        // Show detailed info in a more user-friendly way
+        const debugInfo = `
+Debug Information:
+- Total Events: ${statusData.total_events || 0}
+- Database Connected: ${statusData.database_connected ? '✅' : '❌'}
+- Webhook Secret: ${statusData.webhook_secret_configured ? '✅ Configured' : '⚠️ Not configured'}
+- Latest Event: ${statusData.latest_event ? statusData.latest_event.action + ' by ' + statusData.latest_event.author : 'None'}
+        `;
+        
+        console.log(debugInfo);
+        
+    } catch (error) {
+        console.error('❌ Debug webhook failed:', error);
+        showErrorMessage('Failed to debug webhook connectivity');
+    }
 }
 
 function showErrorMessage(message) {
@@ -499,64 +594,46 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, m => map[m]);
 }
 
-// Enhanced debug function to check webhook connectivity
-async function debugWebhook() {
-    try {
-        console.log('Testing webhook connectivity...');
-        const response = await fetch('/webhook/debug');
-        const data = await response.json();
-        
-        console.log('Recent webhook events:', data);
-        
-        if (data.success && data.events.length > 0) {
-            console.log('✅ Webhook is receiving events');
-            showSuccessMessage('Webhook is working correctly!');
-        } else {
-            console.log('⚠️ No recent webhook events found');
-            showErrorMessage('No recent webhook events found. Check your GitHub webhook configuration.');
-        }
-        
-    } catch (error) {
-        console.error('Debug webhook failed:', error);
-        showErrorMessage('Failed to debug webhook connectivity');
-    }
-}
-
-// Add debug webhook button to console
-console.log('🔧 Debug commands available:');
-console.log('- debugWebhook(): Test webhook connectivity');
+// Add debug commands to console
+console.log('🔧 GitHub Webhook Monitor Debug Commands:');
+console.log('- debugWebhook(): Test webhook connectivity and show detailed info');
 console.log('- createTestEvent("push"): Create test push event');
 console.log('- createTestEvent("pull_request"): Create test PR event');
 console.log('- createTestEvent("merge"): Create test merge event');
 console.log('- fetchEvents(): Manually fetch latest events');
+console.log('- showSuccessMessage("text"): Show success notification');
+console.log('- showErrorMessage("text"): Show error notification');
 
 // Handle page visibility change to pause/resume polling
 document.addEventListener('visibilitychange', function() {
     if (document.hidden) {
-        // Page is hidden, stop polling to save resources
+        // Page is hidden, reduce polling frequency
         if (pollInterval) {
             clearInterval(pollInterval);
-            console.log('Page hidden, stopped polling');
+            console.log('Page hidden, reducing polling frequency');
+            pollInterval = setInterval(fetchEvents, 30000); // 30 seconds when hidden
         }
     } else {
-        // Page is visible, resume polling
-        console.log('Page visible, resuming polling');
+        // Page is visible, resume normal polling
+        console.log('Page visible, resuming normal polling');
         fetchEvents(); // Immediate fetch
-        startPolling(); // Resume regular polling
+        startPolling(); // Resume normal 5-second polling
     }
 });
 
 // Handle online/offline events
 window.addEventListener('online', function() {
-    console.log('Connection restored');
+    console.log('🌐 Connection restored');
     updateStatus('online', 'Connected');
+    showSuccessMessage('Connection restored!');
     fetchEvents();
     startPolling();
 });
 
 window.addEventListener('offline', function() {
-    console.log('Connection lost');
+    console.log('📡 Connection lost');
     updateStatus('offline', 'Offline');
+    showErrorMessage('Connection lost. Will retry when back online.');
     if (pollInterval) {
         clearInterval(pollInterval);
     }
@@ -598,6 +675,26 @@ eventMetaStyles.textContent = `
         color: #6b7280;
     }
     
+    .event-item.new {
+        border-left-color: #10b981 !important;
+        background: linear-gradient(90deg, #ecfdf5 0%, #f8fafc 100%) !important;
+        animation: newEventGlow 2s ease-out;
+    }
+    
+    @keyframes newEventGlow {
+        0% {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+            transform: translateX(-5px);
+        }
+        50% {
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+        }
+        100% {
+            box-shadow: none;
+            transform: translateX(0);
+        }
+    }
+    
     @media (max-width: 768px) {
         .event-meta {
             flex-direction: column;
@@ -606,3 +703,23 @@ eventMetaStyles.textContent = `
     }
 `;
 document.head.appendChild(eventMetaStyles);
+
+// Auto-refresh page if there's been no activity for a long time
+let lastActivityTime = Date.now();
+setInterval(() => {
+    const timeSinceActivity = Date.now() - lastActivityTime;
+    // If no activity for 10 minutes and page is visible, refresh
+    if (timeSinceActivity > 600000 && !document.hidden) {
+        console.log('🔄 Auto-refreshing due to inactivity');
+        window.location.reload();
+    }
+}, 60000); // Check every minute
+
+// Update activity time on any user interaction
+['click', 'keypress', 'scroll', 'mousemove'].forEach(event => {
+    document.addEventListener(event, () => {
+        lastActivityTime = Date.now();
+    }, { passive: true });
+});
+
+console.log('✅ GitHub Webhook Monitor fully loaded and ready!');
