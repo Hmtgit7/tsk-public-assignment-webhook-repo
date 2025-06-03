@@ -2,6 +2,8 @@
 
 A complete Flask-based webhook receiver that captures GitHub events (Push, Pull Request, Merge) and displays them in a real-time web interface. Built for the TechStaX Developer Assessment.
 
+![GitHub Webhook Monitor](assets/image.png)
+
 ## 🚀 Live Demo
 
 - **Live Application**: https://tsk-public-assignment-webhook-repo.onrender.com/
