@@ -32,9 +32,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add refresh button click handler
     refreshBtn.addEventListener('click', fetchEvents);
-    
-    // Update relative timestamps every 30 seconds
-    setInterval(updateAllTimestamps, 30000);
 });
 
 function setWebhookUrl() {
@@ -141,7 +138,6 @@ function createEventElement(event, isNew = false) {
     const eventItem = document.createElement('div');
     eventItem.className = `event-item ${isNew ? 'new' : ''}`;
     eventItem.setAttribute('data-event-id', event.id);
-    eventItem.setAttribute('data-timestamp', event.timestamp);
     
     const actionType = event.action.toLowerCase().replace('_', '-');
     const iconClass = getIconClass(event.action);
@@ -150,6 +146,7 @@ function createEventElement(event, isNew = false) {
     // Parse additional details from the message
     const eventDetails = parseEventMessage(event.message);
     
+    // Clean event display - no redundant timestamps
     eventItem.innerHTML = `
         <div class="event-icon ${actionType}">
             <i class="${iconClass}"></i>
@@ -157,10 +154,6 @@ function createEventElement(event, isNew = false) {
         <div class="event-content">
             <div class="event-message">${escapeHtml(event.message)}</div>
             <div class="event-meta">
-                <span class="event-time" data-timestamp="${event.timestamp}">
-                    <i class="fas fa-clock"></i>
-                    <span class="time-text">${formatTimestamp(event.timestamp)}</span>
-                </span>
                 ${eventDetails.repository ? `
                     <span class="event-repo">
                         <i class="fab fa-github"></i>
@@ -179,18 +172,6 @@ function createEventElement(event, isNew = false) {
     `;
     
     return eventItem;
-}
-
-function updateAllTimestamps() {
-    // Update all timestamp elements to show current relative time
-    const timeElements = document.querySelectorAll('.event-time[data-timestamp]');
-    timeElements.forEach(timeEl => {
-        const timestamp = timeEl.getAttribute('data-timestamp');
-        const timeTextEl = timeEl.querySelector('.time-text');
-        if (timeTextEl) {
-            timeTextEl.textContent = formatTimestamp(timestamp);
-        }
-    });
 }
 
 function parseEventMessage(message) {
@@ -228,39 +209,6 @@ function getIconClass(action) {
             return 'fas fa-code-merge';
         default:
             return 'fas fa-code';
-    }
-}
-
-function formatTimestamp(timestamp) {
-    try {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
-        
-        if (diffMins < 1) {
-            return 'just now';
-        } else if (diffMins < 60) {
-            return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-        } else if (diffHours < 24) {
-            return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-        } else if (diffDays < 7) {
-            return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-        } else {
-            // For older events, show full date
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-    } catch (error) {
-        console.error('Error formatting timestamp:', error);
-        return 'Unknown time';
     }
 }
 
@@ -472,7 +420,7 @@ window.addEventListener('offline', function() {
     }
 });
 
-// Add enhanced event styles
+// Add clean event styles
 const eventStyles = document.createElement('style');
 eventStyles.textContent = `
     .event-meta {
@@ -504,8 +452,12 @@ eventStyles.textContent = `
         font-weight: 500;
     }
     
-    .event-time {
-        color: #6b7280;
+    .event-message {
+        font-size: 1rem;
+        color: #1f2937;
+        font-weight: 500;
+        line-height: 1.4;
+        word-wrap: break-word;
     }
     
     .event-item.new {
@@ -532,6 +484,10 @@ eventStyles.textContent = `
         .event-meta {
             flex-direction: column;
             gap: 8px;
+        }
+        
+        .event-message {
+            font-size: 0.9rem;
         }
     }
 `;
