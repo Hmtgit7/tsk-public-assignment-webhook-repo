@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Webhook Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <i class="fab fa-github"></i>
+                <h1>GitHub Webhook Monitor</h1>
+                <div class="status-indicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span class="status-text" id="statusText">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Section -->
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-code-branch"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="totalEvents">0</h3>
+                        <p>Total Events</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3 id="lastUpdate">Never</h3>
+                        <p>Last Update</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-sync-alt"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>15s</h3>
+                        <p>Refresh Rate</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Events Section -->
+        <section class="events-section">
+            <div class="events-header">
+                <h2>Recent GitHub Activities</h2>
+                <button class="refresh-btn" id="refreshBtn" onclick="fetchEvents()">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+            </div>
+
+            <!-- Loading State -->
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p>Loading events...</p>
+            </div>
+
+            <!-- No Events State -->
+            <div class="no-events" id="noEvents" style="display: none;">
+                <div class="no-events-icon">
+                    <i class="fab fa-github"></i>
+                </div>
+                <h3>No webhook events yet</h3>
+                <p>Push to your repository, create a pull request, or merge changes to see events here.</p>
+                <div class="webhook-url">
+                    <strong>Webhook URL:</strong>
+                    <code id="webhookUrl">http://localhost:5000/webhook/receiver</code>
+                    <button class="copy-btn" onclick="copyWebhookUrl()">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Events List -->
+            <div class="events-list" id="eventsList">
+                <!-- Events will be populated here by JavaScript -->
+            </div>
+        </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
