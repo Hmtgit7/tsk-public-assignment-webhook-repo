@@ -34,7 +34,7 @@ def verify_github_signature(payload_body, signature, secret):
 def receiver():
     """
     GitHub webhook receiver endpoint
-    Handles Push, Pull Request, and Merge events with enhanced logging
+    Handles Push, Pull Request, and Merge events
     """
     try:
         # Get the GitHub event type from headers
@@ -43,7 +43,7 @@ def receiver():
         signature = request.headers.get('X-Hub-Signature-256')
         user_agent = request.headers.get('User-Agent', '')
         
-        logger.info(f"Received webhook - Event: {event_type}, Delivery ID: {delivery_id}, User-Agent: {user_agent}")
+        logger.info(f"Received webhook - Event: {event_type}, Delivery ID: {delivery_id}")
         
         if not event_type:
             logger.warning("No X-GitHub-Event header found")
@@ -96,7 +96,7 @@ def receiver():
                 }), 200
             
             webhook_event = WebhookEvent.from_github_push(payload)
-            logger.info(f"Push event: {webhook_event.author} -> {webhook_event.to_branch} in {webhook_event.repository_name}")
+            logger.info(f"Push event processed: {webhook_event.author} -> {webhook_event.to_branch}")
             
         elif event_type == 'pull_request':
             # Handle pull request events
@@ -135,10 +135,6 @@ def receiver():
             event_id = webhook_event.save()
             logger.info(f"Event saved successfully with ID: {event_id}")
             
-            # Log detailed event information
-            logger.info(f"Event Details - ID: {event_id}, Action: {webhook_event.action}, "
-                       f"Author: {webhook_event.author}, Repository: {webhook_event.repository_name}")
-            
             return jsonify({
                 'message': 'Webhook processed successfully',
                 'event_id': str(event_id),
@@ -167,108 +163,6 @@ def receiver():
             'error': 'Internal server error',
             'delivery_id': delivery_id if 'delivery_id' in locals() else None
         }), 500
-
-@webhook.route('/test', methods=['POST'])
-def test_receiver():
-    """
-    Enhanced test endpoint for manual testing with realistic data
-    """
-    try:
-        # Get test type from request or default
-        test_data = request.get_json() or {}
-        test_type = test_data.get('type', 'push')
-        
-        # Generate unique test data based on current time
-        from datetime import datetime
-        timestamp_str = datetime.now().strftime("%H%M%S")
-        
-        if test_type == 'push':
-            test_event = WebhookEvent(
-                request_id=f'test{timestamp_str}',
-                author='TestDeveloper',
-                action='PUSH',
-                to_branch=f'feature/test-{timestamp_str}',
-                repository_name='test-action-repo',
-                repository_url='https://github.com/testuser/test-action-repo',
-                commit_message=f'Test commit at {datetime.now().strftime("%H:%M:%S")}',
-                timestamp=None  # Will use current time
-            )
-        elif test_type == 'pull_request':
-            test_event = WebhookEvent(
-                request_id=f'pr{timestamp_str}',
-                author='TestDeveloper',
-                action='PULL_REQUEST',
-                from_branch=f'feature/test-{timestamp_str}',
-                to_branch='main',
-                repository_name='test-action-repo',
-                repository_url='https://github.com/testuser/test-action-repo',
-                pull_request_title=f'Test PR created at {datetime.now().strftime("%H:%M:%S")}',
-                timestamp=None
-            )
-        elif test_type == 'merge':
-            test_event = WebhookEvent(
-                request_id=f'merge{timestamp_str}',
-                author='TestMaintainer',
-                action='MERGE',
-                from_branch=f'feature/test-{timestamp_str}',
-                to_branch='main',
-                repository_name='test-action-repo',
-                repository_url='https://github.com/testuser/test-action-repo',
-                pull_request_title=f'Test merge at {datetime.now().strftime("%H:%M:%S")}',
-                timestamp=None
-            )
-        else:
-            return jsonify({'error': f'Unknown test type: {test_type}'}), 400
-        
-        event_id = test_event.save()
-        logger.info(f"Test {test_type} event created with ID: {event_id}")
-        
-        return jsonify({
-            'message': f'Test {test_type} event created successfully',
-            'event_id': str(event_id),
-            'action': test_event.action,
-            'author': test_event.author,
-            'repository': test_event.repository_name,
-            'timestamp': test_event.timestamp.isoformat()
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Error creating test event: {str(e)}")
-        return jsonify({'error': 'Failed to create test event'}), 500
-
-@webhook.route('/debug', methods=['GET'])
-def debug_events():
-    """
-    Debug endpoint to see recent events in JSON format
-    """
-    try:
-        events = WebhookEvent.get_recent_events(limit=10)
-        formatted_events = []
-        
-        for event in events:
-            # Convert ObjectId to string for JSON serialization
-            event['_id'] = str(event['_id'])
-            # Convert datetime to string
-            if 'timestamp' in event:
-                event['timestamp'] = event['timestamp'].isoformat()
-            formatted_events.append(event)
-        
-        return jsonify({
-            'success': True,
-            'events': formatted_events,
-            'count': len(formatted_events),
-            'webhook_configured': current_app.config.get('GITHUB_WEBHOOK_SECRET') is not None,
-            'debug_info': {
-                'total_events': len(formatted_events),
-                'latest_event': formatted_events[0] if formatted_events else None,
-                'unique_authors': list(set(event.get('author', 'Unknown') for event in formatted_events)),
-                'event_types': list(set(event.get('action', 'Unknown') for event in formatted_events))
-            }
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Error in debug endpoint: {str(e)}")
-        return jsonify({'error': 'Debug endpoint failed'}), 500
 
 @webhook.route('/status', methods=['GET'])
 def webhook_status():

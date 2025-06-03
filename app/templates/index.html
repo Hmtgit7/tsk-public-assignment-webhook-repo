@@ -6,6 +6,7 @@
     <title>GitHub Webhook Monitor</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔗</text></svg>">
 </head>
 <body>
     <div class="container">
@@ -47,7 +48,7 @@
                         <i class="fas fa-sync-alt"></i>
                     </div>
                     <div class="stat-content">
-                        <h3>15s</h3>
+                        <h3>10s</h3>
                         <p>Refresh Rate</p>
                     </div>
                 </div>
@@ -76,13 +77,23 @@
                     <i class="fab fa-github"></i>
                 </div>
                 <h3>No webhook events yet</h3>
-                <p>Push to your repository, create a pull request, or merge changes to see events here.</p>
+                <p>Configure your GitHub repository webhook to start monitoring push events, pull requests, and merges in real-time.</p>
                 <div class="webhook-url">
                     <strong>Webhook URL:</strong>
                     <code id="webhookUrl">http://localhost:5000/webhook/receiver</code>
                     <button class="copy-btn" onclick="copyWebhookUrl()">
                         <i class="fas fa-copy"></i>
                     </button>
+                </div>
+                <div class="setup-instructions">
+                    <h4>Quick Setup:</h4>
+                    <ol>
+                        <li>Go to your GitHub repository settings</li>
+                        <li>Navigate to Webhooks → Add webhook</li>
+                        <li>Copy the webhook URL above</li>
+                        <li>Select "Pushes" and "Pull requests" events</li>
+                        <li>Click "Add webhook"</li>
+                    </ol>
                 </div>
             </div>
 
@@ -92,6 +103,96 @@
             </div>
         </section>
     </div>
+
+    <!-- Additional Styles -->
+    <style>
+        .setup-instructions {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border-left: 4px solid #6366f1;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .setup-instructions h4 {
+            color: #1f2937;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+        
+        .setup-instructions ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .setup-instructions li {
+            margin-bottom: 8px;
+            color: #6b7280;
+            line-height: 1.5;
+        }
+        
+        .stats-grid .stat-card:nth-child(3) .stat-content h3 {
+            font-size: 1.5rem;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .setup-instructions {
+                margin-top: 20px;
+                padding: 15px;
+            }
+            
+            .webhook-url {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+        }
+        
+        /* Enhanced loading animation */
+        .loading-spinner {
+            border: 4px solid #e5e7eb;
+            border-top: 4px solid #6366f1;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Status indicator enhancements */
+        .status-indicator {
+            transition: all 0.3s ease;
+        }
+        
+        .status-dot {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+        }
+        
+        .status-dot:not(.offline) {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+    </style>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>

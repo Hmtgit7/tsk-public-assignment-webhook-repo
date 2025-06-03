@@ -22,8 +22,8 @@ class WebhookEvent:
         self.repository_url = repository_url
         self.commit_message = commit_message
         self.pull_request_title = pull_request_title
-        # Always use current UTC time for consistency
-        self.timestamp = timestamp or datetime.now(timezone.utc)
+        # Use provided timestamp or current UTC time
+        self.timestamp = timestamp if timestamp else datetime.now(timezone.utc)
     
     def to_dict(self):
         """Convert to dictionary for MongoDB storage"""
@@ -64,7 +64,7 @@ class WebhookEvent:
     
     @staticmethod
     def format_message(event):
-        """Format event message for display with proper timezone"""
+        """Format event message for display with proper current time calculation"""
         try:
             author = event['author']
             action = event['action']
@@ -75,68 +75,96 @@ class WebhookEvent:
             commit_message = event.get('commit_message')
             pull_request_title = event.get('pull_request_title')
             
-            # Format timestamp - ensure it's timezone aware
+            # Calculate time difference from now
+            now = datetime.now(timezone.utc)
             if isinstance(timestamp, datetime):
-                # If timestamp is naive, assume it's UTC
+                # Ensure timezone awareness
                 if timestamp.tzinfo is None:
                     timestamp = timestamp.replace(tzinfo=timezone.utc)
-                formatted_time = timestamp.strftime("%d %B %Y - %I:%M %p UTC")
+                time_diff = now - timestamp
+                formatted_time = WebhookEvent._format_time_ago(time_diff)
             else:
                 # Try to parse string timestamp
                 try:
                     parsed_time = dateutil.parser.parse(timestamp)
                     if parsed_time.tzinfo is None:
                         parsed_time = parsed_time.replace(tzinfo=timezone.utc)
-                    formatted_time = parsed_time.strftime("%d %B %Y - %I:%M %p UTC")
+                    time_diff = now - parsed_time
+                    formatted_time = WebhookEvent._format_time_ago(time_diff)
                 except:
                     formatted_time = str(timestamp)
             
-            # Format message based on action type with enhanced details
+            # Format message based on action type
             if action == 'PUSH':
-                base_message = f'"{author}" pushed to "{to_branch}" in "{repository_name}" on {formatted_time}'
+                base_message = f'"{author}" pushed to "{to_branch}" in "{repository_name}" {formatted_time}'
                 if commit_message:
                     base_message += f' - "{commit_message}"'
                 return base_message
                 
             elif action == 'PULL_REQUEST':
-                base_message = f'"{author}" submitted a pull request from "{from_branch}" to "{to_branch}" in "{repository_name}" on {formatted_time}'
+                base_message = f'"{author}" submitted a pull request from "{from_branch}" to "{to_branch}" in "{repository_name}" {formatted_time}'
                 if pull_request_title:
                     base_message += f' - "{pull_request_title}"'
                 return base_message
                 
             elif action == 'MERGE':
-                base_message = f'"{author}" merged branch "{from_branch}" to "{to_branch}" in "{repository_name}" on {formatted_time}'
+                base_message = f'"{author}" merged branch "{from_branch}" to "{to_branch}" in "{repository_name}" {formatted_time}'
                 if pull_request_title:
                     base_message += f' - "{pull_request_title}"'
                 return base_message
             else:
-                return f'"{author}" performed {action} in "{repository_name}" on {formatted_time}'
+                return f'"{author}" performed {action} in "{repository_name}" {formatted_time}'
                 
         except Exception as e:
             logger.error(f"Error formatting message: {str(e)}")
             return "Error formatting event message"
     
     @staticmethod
+    def _format_time_ago(time_diff):
+        """Format time difference as human-readable string"""
+        total_seconds = int(time_diff.total_seconds())
+        
+        if total_seconds < 60:
+            return "just now"
+        elif total_seconds < 3600:  # Less than 1 hour
+            minutes = total_seconds // 60
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        elif total_seconds < 86400:  # Less than 1 day
+            hours = total_seconds // 3600
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif total_seconds < 604800:  # Less than 1 week
+            days = total_seconds // 86400
+            return f"{days} day{'s' if days > 1 else ''} ago"
+        else:
+            weeks = total_seconds // 604800
+            return f"{weeks} week{'s' if weeks > 1 else ''} ago"
+    
+    @staticmethod
     def from_github_push(payload):
-        """Create WebhookEvent from GitHub push payload with proper timestamp"""
+        """Create WebhookEvent from GitHub push payload using actual commit timestamp"""
         try:
-            # Extract commit message from the latest commit
+            # Extract commit information from the latest commit
             commit_message = None
             commit_timestamp = None
+            
             if payload.get('commits') and len(payload['commits']) > 0:
                 latest_commit = payload['commits'][0]
-                commit_message = latest_commit.get('message', '')[:100]  # Limit to 100 chars
+                commit_message = latest_commit.get('message', '')[:100]
+                
                 # Use the actual commit timestamp from GitHub
                 commit_timestamp_str = latest_commit.get('timestamp')
                 if commit_timestamp_str:
                     try:
                         commit_timestamp = dateutil.parser.parse(commit_timestamp_str)
-                        # Ensure timezone awareness
-                        if commit_timestamp.tzinfo is None:
-                            commit_timestamp = commit_timestamp.replace(tzinfo=timezone.utc)
-                    except:
-                        logger.warning(f"Could not parse commit timestamp: {commit_timestamp_str}")
+                        logger.info(f"Using GitHub commit timestamp: {commit_timestamp}")
+                    except Exception as e:
+                        logger.warning(f"Could not parse commit timestamp {commit_timestamp_str}: {e}")
                         commit_timestamp = datetime.now(timezone.utc)
+                else:
+                    # Fallback to webhook received time
+                    commit_timestamp = datetime.now(timezone.utc)
+            else:
+                commit_timestamp = datetime.now(timezone.utc)
             
             # Extract repository information
             repository = payload.get('repository', {})
@@ -148,14 +176,14 @@ class WebhookEvent:
             branch_name = ref.split('/')[-1] if ref.startswith('refs/heads/') else ref
             
             return WebhookEvent(
-                request_id=payload.get('after', '')[:12],  # Short commit hash
+                request_id=payload.get('after', '')[:12],
                 author=payload['pusher']['name'],
                 action='PUSH',
                 to_branch=branch_name,
                 repository_name=repository_name,
                 repository_url=repository_url,
                 commit_message=commit_message,
-                timestamp=commit_timestamp or datetime.now(timezone.utc)  # Use commit time or current time
+                timestamp=commit_timestamp
             )
         except KeyError as e:
             logger.error(f"Missing key in push payload: {str(e)}")
@@ -163,22 +191,20 @@ class WebhookEvent:
     
     @staticmethod
     def from_github_pull_request(payload):
-        """Create WebhookEvent from GitHub pull request payload with proper timestamp"""
+        """Create WebhookEvent from GitHub pull request payload"""
         try:
             pr = payload['pull_request']
             repository = payload.get('repository', {})
             
-            # Use PR creation timestamp
-            pr_timestamp = None
+            # Use PR creation timestamp from GitHub
+            pr_timestamp = datetime.now(timezone.utc)
             created_at = pr.get('created_at')
             if created_at:
                 try:
                     pr_timestamp = dateutil.parser.parse(created_at)
-                    if pr_timestamp.tzinfo is None:
-                        pr_timestamp = pr_timestamp.replace(tzinfo=timezone.utc)
-                except:
-                    logger.warning(f"Could not parse PR timestamp: {created_at}")
-                    pr_timestamp = datetime.now(timezone.utc)
+                    logger.info(f"Using GitHub PR timestamp: {pr_timestamp}")
+                except Exception as e:
+                    logger.warning(f"Could not parse PR timestamp {created_at}: {e}")
             
             return WebhookEvent(
                 request_id=str(pr['id']),
@@ -188,8 +214,8 @@ class WebhookEvent:
                 to_branch=pr['base']['ref'],
                 repository_name=repository.get('name', 'Unknown'),
                 repository_url=repository.get('html_url', ''),
-                pull_request_title=pr.get('title', '')[:100],  # Limit to 100 chars
-                timestamp=pr_timestamp or datetime.now(timezone.utc)
+                pull_request_title=pr.get('title', '')[:100],
+                timestamp=pr_timestamp
             )
         except KeyError as e:
             logger.error(f"Missing key in pull request payload: {str(e)}")
@@ -197,22 +223,20 @@ class WebhookEvent:
     
     @staticmethod
     def from_github_merge(payload):
-        """Create WebhookEvent from GitHub merge payload with proper timestamp"""
+        """Create WebhookEvent from GitHub merge payload"""
         try:
             pr = payload['pull_request']
             repository = payload.get('repository', {})
             
-            # Use merge timestamp
-            merge_timestamp = None
+            # Use merge timestamp from GitHub
+            merge_timestamp = datetime.now(timezone.utc)
             merged_at = pr.get('merged_at')
             if merged_at:
                 try:
                     merge_timestamp = dateutil.parser.parse(merged_at)
-                    if merge_timestamp.tzinfo is None:
-                        merge_timestamp = merge_timestamp.replace(tzinfo=timezone.utc)
-                except:
-                    logger.warning(f"Could not parse merge timestamp: {merged_at}")
-                    merge_timestamp = datetime.now(timezone.utc)
+                    logger.info(f"Using GitHub merge timestamp: {merge_timestamp}")
+                except Exception as e:
+                    logger.warning(f"Could not parse merge timestamp {merged_at}: {e}")
             
             return WebhookEvent(
                 request_id=str(pr['id']),
@@ -223,7 +247,7 @@ class WebhookEvent:
                 repository_name=repository.get('name', 'Unknown'),
                 repository_url=repository.get('html_url', ''),
                 pull_request_title=pr.get('title', '')[:100],
-                timestamp=merge_timestamp or datetime.now(timezone.utc)
+                timestamp=merge_timestamp
             )
         except KeyError as e:
             logger.error(f"Missing key in merge payload: {str(e)}")
